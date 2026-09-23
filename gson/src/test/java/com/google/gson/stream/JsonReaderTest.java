@@ -166,6 +166,77 @@ public final class JsonReaderTest {
   }
 
   @Test
+  public void testStrictModeSkipValueRejectsUnescapedControlCharacter() throws IOException {
+    JsonReader reader = new JsonReader(reader("[\"a\u0001b\"]"));
+    reader.setStrictness(Strictness.STRICT);
+    reader.beginArray();
+    IOException expected = assertThrows(IOException.class, reader::skipValue);
+    assertThat(expected)
+        .hasMessageThat()
+        .startsWith(
+            "Unescaped control characters (\\u0000-\\u001F) are not allowed in strict mode"
+                + " at line 1 column 3 path $[0]");
+
+    // Property name
+    reader = new JsonReader(reader("{\"a\u0001b\":1}"));
+    reader.setStrictness(Strictness.STRICT);
+    reader.beginObject();
+    expected = assertThrows(IOException.class, reader::skipValue);
+    assertThat(expected)
+        .hasMessageThat()
+        .startsWith(
+            "Unescaped control characters (\\u0000-\\u001F) are not allowed in strict mode"
+                + " at line 1 column 3 path $.");
+  }
+
+  @Test
+  public void testStrictModeSkipValueRejectsUnpairedSurrogates() throws IOException {
+    for (String json :
+        new String[] {"\"\\uD800\"", "\"\\uDC00\"", "\"\uD800\"", "{\"\\uD800\":1}"}) {
+      JsonReader reader = new JsonReader(reader(json));
+      reader.setStrictness(Strictness.STRICT);
+      if (json.startsWith("{")) {
+        reader.beginObject();
+      }
+      IOException expected = assertThrows(IOException.class, reader::skipValue);
+      assertThat(expected)
+          .hasMessageThat()
+          .startsWith("Unpaired surrogate characters are not allowed in strict mode");
+    }
+  }
+
+  @Test
+  public void testStrictModeSkipValueAllowsValidStrings() throws IOException {
+    JsonReader reader =
+        new JsonReader(
+            reader("{\"a\\u0001\":\"\\uD834\\uDD1E\",\"\uD834\uDD1E\":\"\\n\",\"c\":1}"));
+    reader.setStrictness(Strictness.STRICT);
+    reader.beginObject();
+    reader.skipValue();
+    reader.skipValue();
+    reader.skipValue();
+    reader.skipValue();
+    assertThat(reader.nextName()).isEqualTo("c");
+    assertThat(reader.nextInt()).isEqualTo(1);
+    reader.endObject();
+    assertThat(reader.peek()).isEqualTo(JsonToken.END_DOCUMENT);
+  }
+
+  @Test
+  public void testLegacyStrictModeSkipValueAllowsControlCharactersAndUnpairedSurrogates()
+      throws IOException {
+    JsonReader reader = new JsonReader(reader("{\"a\u0001\":\"\\uD800\",\"b\":\"x\u0001\uDC00\"}"));
+    reader.setStrictness(Strictness.LEGACY_STRICT);
+    reader.beginObject();
+    reader.skipValue();
+    reader.skipValue();
+    assertThat(reader.nextName()).isEqualTo("b");
+    reader.skipValue();
+    reader.endObject();
+    assertThat(reader.peek()).isEqualTo(JsonToken.END_DOCUMENT);
+  }
+
+  @Test
   public void testNonStrictModeParsesUnescapedControlCharacter() throws IOException {
     String json = "\"\t\"";
     JsonReader reader = new JsonReader(reader(json));
