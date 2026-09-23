@@ -20,6 +20,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
 
 import com.google.gson.Gson.FutureTypeAdapter;
+import com.google.gson.annotations.SerializedName;
 import com.google.gson.internal.Excluder;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
@@ -328,6 +329,71 @@ public final class GsonTest {
     canThreadProceed.countDown();
     thread.join();
     assertThat(otherThreadAdapter.get().toJson(null)).isEqualTo("[[\"wrapped-nested\"]]");
+  }
+
+  /**
+   * Verifies that when a nested {@link Gson#getAdapter(TypeToken)} call fails but the exception is
+   * caught by the factory which made the call, the unresolved {@link FutureTypeAdapter} for the
+   * failed type (and adapters depending on it) are not cached.
+   */
+  @Test
+  public void testGetAdapter_NestedFailureNotCached() {
+    Gson gson =
+        new GsonBuilder()
+            .registerTypeAdapterFactory(
+                new TypeAdapterFactory() {
+                  @Override
+                  public <T> TypeAdapter<T> create(Gson gson, TypeToken<T> type) {
+                    if (type.getRawType() != CustomClass1.class) {
+                      return null;
+                    }
+                    // Nested request fails, but ignore failure and use fallback adapter
+                    assertThrows(
+                        IllegalArgumentException.class,
+                        () -> gson.getAdapter(DuplicateFields.class));
+                    return new TypeAdapter<T>() {
+                      @Override
+                      public void write(JsonWriter out, T value) throws IOException {
+                        out.value("fallback");
+                      }
+
+                      @Override
+                      public T read(JsonReader in) {
+                        throw new AssertionError("not needed for this test");
+                      }
+                    };
+                  }
+                })
+            .create();
+
+    assertThat(gson.toJson(new CustomClass1())).isEqualTo("\"fallback\"");
+
+    String expectedMessage = "declares multiple JSON fields named 'a'";
+    // Should throw original exception again, instead of returning unresolved FutureTypeAdapter
+    IllegalArgumentException e =
+        assertThrows(IllegalArgumentException.class, () -> gson.getAdapter(DuplicateFields.class));
+    assertThat(e).hasMessageThat().contains(expectedMessage);
+
+    // Adapter for Child was created during the failed request and refers to the unresolved
+    // FutureTypeAdapter for DuplicateFields; it should not have been cached either
+    e =
+        assertThrows(
+            IllegalArgumentException.class, () -> gson.getAdapter(DuplicateFields.Child.class));
+    assertThat(e).hasMessageThat().contains(expectedMessage);
+  }
+
+  @SuppressWarnings("unused")
+  private static class DuplicateFields {
+    // Field must be declared before the duplicate fields to have its adapter created first
+    Child child;
+    int a;
+
+    @SerializedName("a")
+    int b;
+
+    static class Child {
+      DuplicateFields parent;
+    }
   }
 
   @Test

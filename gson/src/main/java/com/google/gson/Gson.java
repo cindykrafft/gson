@@ -40,6 +40,8 @@ import java.io.StringReader;
 import java.io.Writer;
 import java.lang.reflect.Type;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -349,7 +351,8 @@ public final class Gson {
     Map<TypeToken<?>, TypeAdapter<?>> threadCalls = threadLocalAdapterResults.get();
     boolean isInitialAdapterRequest = false;
     if (threadCalls == null) {
-      threadCalls = new HashMap<>();
+      // Uses LinkedHashMap to preserve insertion order, see failure handling below
+      threadCalls = new LinkedHashMap<>();
       threadLocalAdapterResults.set(threadCalls);
       isInitialAdapterRequest = true;
     } else {
@@ -378,6 +381,24 @@ public final class Gson {
     } finally {
       if (isInitialAdapterRequest) {
         threadLocalAdapterResults.remove();
+      } else if (candidate == null) {
+        /*
+         * Creating the adapter failed (factory threw exception or no factory supports the type).
+         * The caller of this nested request might catch the exception and succeed nonetheless, so
+         * remove the unresolved FutureTypeAdapter for this type, as well as all adapters created
+         * after it during this request (they might depend on that unresolved FutureTypeAdapter),
+         * to prevent them from being published to typeTokenCache. Adapters for these types will
+         * be created again when they are requested the next time.
+         */
+        boolean isAfterFailedType = false;
+        Iterator<TypeToken<?>> keys = threadCalls.keySet().iterator();
+        while (keys.hasNext()) {
+          TypeToken<?> key = keys.next();
+          if (isAfterFailedType || key.equals(type)) {
+            isAfterFailedType = true;
+            keys.remove();
+          }
+        }
       }
     }
 
