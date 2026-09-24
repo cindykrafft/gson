@@ -764,10 +764,12 @@ public final class TypeAdapters {
         // A pattern that matches every IP address and no DNS address. It matches some things that
         // aren't either of those, but only ones that InetAddress.getByName will reject without
         // attempting a lookup. An IPv4 address is n.n.n.n where each n is between 0 and 255,
-        // possibly with leading zeros. An IPv6 address contains at least one colon, and
-        // getByName only treats a string as an IPv6 literal (rather than looking it up) if it
-        // starts with a hex digit, a colon, or an opening bracket.
-        private static final String IPV4_PART = "0*(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])";
+        // written with at most three digits (getByName accepts leading zeros such as "001").
+        // An IPv6 address contains at least one colon, and getByName only tries to parse a string
+        // as an IP literal (rather than looking it up) if it starts with a hex digit, a colon, or
+        // an opening bracket; a string that it tries to parse and that contains a colon is either
+        // parsed or rejected.
+        private static final String IPV4_PART = "(25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])";
         private final Pattern ipAddressPattern =
             Pattern.compile("[0-9A-Fa-f:\\[].*:.*|" + IPV4_PART + "(\\." + IPV4_PART + "){3}");
 

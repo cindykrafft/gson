@@ -69,8 +69,9 @@ public class DefaultInetAddressTypeAdapterTest {
 
   @Test
   public void testInetAddressDeserializeIpLikeNonIpAddress() {
-    // These look like IP addresses but aren't, so InetAddress.getByName would look them up.
-    for (String address : new String[] {"256.1.1.1", "300.1.1.1", "1.2.3.999", "zz:1", "g::1"}) {
+    // These look like IP addresses but are not IP literals that InetAddress.getByName parses.
+    for (String address :
+        new String[] {"256.1.1.1", "300.1.1.1", "1.2.3.999", "0001.2.3.4", "zz:1", "g::1"}) {
       String jsonAddress = "\"" + address + "\"";
       JsonSyntaxException e =
           assertThrows(
@@ -85,7 +86,14 @@ public class DefaultInetAddressTypeAdapterTest {
   public void testInetAddressDeserializeIpAddressForms() throws Exception {
     for (String address :
         new String[] {
-          "0.0.0.0", "255.255.255.255", "01.2.3.4", "::1", "[::1]", "::ffff:1.2.3.4", "fe80::1%1"
+          "0.0.0.0",
+          "255.255.255.255",
+          "01.2.3.4",
+          "001.002.003.004",
+          "::1",
+          "[::1]",
+          "::ffff:1.2.3.4",
+          "fe80::1%1"
         }) {
       String jsonAddress = "\"" + address + "\"";
       assertThat(gson.fromJson(jsonAddress, InetAddress.class))
